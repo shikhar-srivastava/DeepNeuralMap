@@ -1,20 +1,6 @@
 # Project: Deep Neural Map
 # Formatting: yapf
-'''Neural Map definition:
-
-Structure: ND array of SOM neurons
-Size:
-Weights of each neuron: [w_j1, w_j2, .. , w_jm] for all j neurons in the SOM Map, and m is the embedding space dimensionality
-
-best_match:
-    return arg min || Z - w_j ||
-        Z: embedding vector for each observation
-'''
-
-# Define Euclidian function to get distance
-# Convolutional Autoencoder:
-# Encoder e_theta : X -> Z
-# Decoder d_phi : Z -> X'
+# Author: Shikhar Srivastava
 
 import tensorflow as tf
 import collections
@@ -31,8 +17,17 @@ from vae import VAE
 
 
 class NeuralMap(tf.keras.Model):
+    '''Neural Map definition:
+
+    Structure: ND array of SOM neurons
+    Size:
+    Weights of each neuron: [w_j1, w_j2, .. , w_jm] for all j neurons in the SOM Map, and m is the embedding space dimensionality
+
+    best_match:
+        return arg min || Z - w_j ||
+            Z: embedding vector for each observation
     '''
-    '''
+
     def __init__(self,
                  shape,
                  embed_dim,
