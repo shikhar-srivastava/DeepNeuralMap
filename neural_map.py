@@ -27,11 +27,7 @@ from tensorflow.python.keras.backend import dtype
 from datetime import datetime
 from packaging import version
 from PIL import Image
-#from vae import VAE
-'''
-# SOM Memory with Policy, Weight tuples.
-neuron = collections.namedtuple('neuron', ('weight','policy') )
-'''
+from vae import VAE
 
 
 class NeuralMap(tf.keras.Model):
@@ -52,10 +48,10 @@ class NeuralMap(tf.keras.Model):
                     shape: Shape/Structure of the map
                     embed_dim: Embedding shape/ Weight shape of each neuron in SOM
                     alpha: Hyperparameter controlling rate of Neighborhood shrinking (& learning rate reduction) [Rule of thumb: alpha ~= No. of iterations/5]
-                    eta_0: SOM Learning rate constant in eta_n = eta_0 * exp(n/alpha). 
+                    eta_0: SOM Learning rate constant in eta_n = eta_0 * exp(n/alpha).
                     sigma_0: Hyperparameter controlling maximum size of neighborhood region [Usually set to max(map shape) / 2]
-                    map_init: Map initialization value for the map of shape [embed_dim]. 
-          
+                    map_init: Map initialization value for the map of shape [embed_dim].
+
 
         '''
         super(NeuralMap, self).__init__(**kwargs)
@@ -71,9 +67,8 @@ class NeuralMap(tf.keras.Model):
         self.label_map = np.zeros(self.shape, dtype=np.object)
         self.initializer = 'random_uniform'  #tf.keras.initializers.RandomUniform(minval=0,maxval=255)
 
-        # Utility vars
-
         # Computational Cache for some operations
+
         self.distances = None  # Euclidian distances computed for current batch
         self.grid = self._index_grid(self.shape)
         self._grid = self.grid  # Specific shape of self.grid is needed for Gradient computation. [Recomputing this takes time]
@@ -83,6 +78,7 @@ class NeuralMap(tf.keras.Model):
         self.step = tf.constant(
             0,
             dtype=tf.float16)  #float16 for type consistency for all constants.
+
 
         # Create SOM weight array
         print('Creating SOM of shape %s with weight dimension %s' %
@@ -100,7 +96,6 @@ class NeuralMap(tf.keras.Model):
                 list(tf.ones([len(self.shape)], dtype=tf.int32).numpy()) +
                 self.embed_dim)),
                                    dtype=tf.float16)
-        # SOM Shape: [l1,l2,..,ln,M]. Therefore, SOM - Z gives shape [l1,l2,...,ln,M] with Ni - Z in each element.
 
     @tf.function
     def eta(self, n):
@@ -143,8 +138,7 @@ class NeuralMap(tf.keras.Model):
             Returns:
                 U, diff, distances
         '''
-        # embeddings = tf.random.normal([batch_size, embed_dim], mean = 0.0, stddev = 1.0, dtype= tf.float16, seed = 10, name = 'embedding_sample') # embeddings random input
-        # Reshape Z
+
         assert Z.shape[1:] == self.embed_dim, (
             str(self.__class__.__name__) +
             ': Embeddings Z do not have -> shape Z.shape[1:] = embedding_dimension'
@@ -159,7 +153,8 @@ class NeuralMap(tf.keras.Model):
         diff = tf.math.subtract(Z_, self.SOM, name='best_match_neuron/diff')
         distances = self.nd_norm(
             diff
-        )  # N-dimensional L2 Norm to get distance |tf.norm(Z_ - self.SOM, ord='euclidean', axis = -1)
+        )
+        # N-dimensional L2 Norm to get distance |tf.norm(Z_ - self.SOM, ord='euclidean', axis = -1)
         # Flatten self.distances to [batch_size, shape[0]*shape[1]*...*shape[n-1]]
         # Convert first to [batch_size, 1] then get nd_index
         distance_shape = tf.concat([
@@ -187,13 +182,15 @@ class NeuralMap(tf.keras.Model):
                     return Batch of neuron-weights 'u' closest to input embeddings. Shape: [batch_size, embed_dim]
         '''
         if (training is False):
-            # -- Inference only
+            # Inference
             return self.best_match_neuron(inputs, weights=True)
         else:
-            # -- Training
+            # Training
+
             # Read & update memory
             if (step is None):
                 step = self.step
+
             # Define iteration loop using tf.while
             i = tf.constant(0, dtype=tf.float16)
 
@@ -203,6 +200,7 @@ class NeuralMap(tf.keras.Model):
                 self.update_memory(
                     gradient)  # Updates memory and increments step
                 i = tf.add(i, 1)
+
                 # Add loss to model
             kl_loss = self.get_kl_loss(inputs)
 
@@ -227,6 +225,7 @@ class NeuralMap(tf.keras.Model):
             η(n) : learning rate
         '''
         U, diff = self._best_match_neuron(Z)
+
         #indices of best match neurons in order of Z batch | [batch_size, len(shape)]
         #U_weights = tf.gather_nd(self.SOM, U) # best match neuron weights in order of Z batch | [batch_size, embed_dim]
 
@@ -267,6 +266,7 @@ class NeuralMap(tf.keras.Model):
             @TODO: Makes unncessary extra call to self.density_q. pass q as param.
         '''
         # since shape of 'q' is guaranteed to be [batch_size, l] irrespective of SOM lattice structure, therefore we can use axis = 0/1 in below reductions
+
         raw_p = tf.square(q) / (tf.reduce_sum(q, axis=0, keepdims=True))
         return raw_p / (tf.reduce_sum(raw_p, axis=1, keepdims=True))
 
@@ -317,8 +317,8 @@ class NeuralMap(tf.keras.Model):
     @tf.function
     def nd_norm(self, diff):
         '''
-            Norm of the last len(embed_dim) axes. 
-        
+            Norm of the last len(embed_dim) axes.
+
             Input: Tensor of shape ( [dim0....dimnN] + [embed_dim] ) [[shape] + [embed_dim]]
             Returns: L2 Normed Tensor of shape ( [dim0....dimN] )
             @optimized as: Flatten the last embed_dim dimensions and then taken regular tf.norm
@@ -370,16 +370,13 @@ def som_to_grid(neural_map):
 
 def trainer(iterations, epochs, shape, batch_size, max_steps):
 
-    # Set up logging and Tracing.
-    #tf.profiler.experimental.start('logs/neural_map_v1/profile')
     # Fetch Dataset
     (x_train, _), (_, _) = tf.keras.datasets.mnist.load_data()
     x_train = tf.cast(tf.reshape(x_train, (x_train.shape[0], -1)),
                       dtype=tf.float16) / 255
+
     # Feed unsupervised average to initialize
     #data_avg = tf.reduce_mean(x_train, axis=0)
-    # Call only one tf.function when tracing.
-    #shape = [5, 5]
 
     neural_map = NeuralMap(
         shape=shape,
@@ -387,20 +384,23 @@ def trainer(iterations, epochs, shape, batch_size, max_steps):
         dtype=tf.float16,
         alpha=(1.0 / 5.0 *
                max_steps),  # how quickly the neighborhood region shrinks.
-        sigma_0=None,  # max size of the neighborhood region 
+        sigma_0=None,  # max size of the neighborhood region
         eta_0=0.3,
         map_init=None)
+
     # Data
     train_ds = tf.data.Dataset.from_tensor_slices(x_train).shuffle(
         buffer_size=2 * batch_size).batch(batch_size)
-    # Metrics
 
+    # Metrics
     kl_loss = tf.keras.metrics.Mean()
     distortion = tf.keras.metrics.Mean()
+
     # Logging material here
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     logdir = 'logs/neural_map_' + (str(shape[0]) + 'x' +
                                    str(shape[1])) + '/%s' % stamp
+
     #tb_callback = tf.keras.callbacks.TensorBoard(logdir)
     #tb_callback.set_model(neural_map)
     #tf.summary.trace_on(graph=True, profiler=True)
@@ -422,8 +422,7 @@ def trainer(iterations, epochs, shape, batch_size, max_steps):
                              data=som_to_grid(neural_map),
                              max_outputs=3,
                              step=step)
-            #tf.summary.scalar('step', step, step=step)
-            #tf.summary.scalar('epoch', epoch, step=epoch)
+
             tf.summary.scalar('kl_loss', kl_loss.result(), step=step)
             tf.summary.scalar('distortion', distortion.result(), step=step)
 
@@ -433,14 +432,11 @@ def trainer(iterations, epochs, shape, batch_size, max_steps):
                                     step=0,
                                     profiler_outdir=logdir)'''
             step += 1
-    #tf.profiler.experimental.stop()
-    '''#Viz
-    print('Visualizing')
-    neural_map.viz('full_' + str(shape[0]) + 'x' + str(shape[1]))'''
+
 
 
 if (__name__ == '__main__'):
-    #cProfile.run('run()', '/home/dm1/shikhar/deep_neural_maps/stats_optim_3')
+
     iterations = 10
     epochs = 8
     batch_size = 50
